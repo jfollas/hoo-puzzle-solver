@@ -13,4 +13,4 @@ entry. That's when I thought, "I wonder if I could write something that would le
 - Multiple monitors so that you can run WoW on one and Chrome on another.
 
 ## Live site:
-https://jfollas.github.io/hoo-puzzle-solver
+https://jfollas.github.io/hoo-puzzle-solver/
