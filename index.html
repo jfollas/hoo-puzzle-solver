@@ -1,0 +1,1145 @@
+<html>
+
+<head>
+  <title>A Better(?) HoA Puzzle Solver</title>
+  <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.6.3/css/all.css" integrity="sha384-UHRtZLI+pbxtHCWp1t77Bi1L4ZtiqrqD80Kn4Z8NTSRyMA2Fd33n5dQ8lWUE00s/" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/css/bootstrap.min.css" integrity="sha384-MCw98/SFnGE8fJT3GXwEOngsV7Zt27NXFoaoApmYm81iuXoPkFOJwJ8ERdknLPMO"
+    crossorigin="anonymous">
+  <style>
+    td {
+      height: 20;
+      width: 20;
+      background-color: black;
+      color: black;
+      text-align: center;
+      cursor: pointer;
+    }
+
+    tr.current {
+      border: 3px solid cyan;
+    }
+
+    td.current {
+      box-shadow: 1px 1px 2px black, 0 0 25px blue, 0 0 5px darkblue;
+      transform: scale(1);
+    }
+
+    td.tracked {
+      background-color: #000022 !important;
+      color: #444444 !important;
+      border: 2px solid red;
+    }
+
+    dt.symbol {
+      font-family: monospace;
+      line-height: 12px;
+      font-size: 12px;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="app">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-3">
+      <a class="navbar-brand" href="#">HoO Puzzle Dictation/Solver</a>
+      <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarText">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarText">
+        <ul class="navbar-nav mr-auto">
+          <li class="nav-item mr-2" v-show="!started">
+            <button v-on:click="start" class="btn btn-success"><i class="fas fa-microphone"></i> Start</button>
+          </li>
+          <li class="nav-item mr-2" v-show="started">
+            <button v-on:click="stop" class="btn btn-secondary"><i class="fas fa-microphone-slash"></i> Stop</button>
+          </li>
+          <li class="nav-item mr-2" v-show="!showSolution">
+            <button v-on:click="calc" class="btn btn-primary">Solve</button>
+          </li>
+          <li class="nav-item mr-2" v-show="showSolution">
+            <button v-on:click="showPuzzle" class="btn btn-primary">Return to Puzzle</button>
+          </li>          
+        </ul>
+
+        <span class="navbar-text mr-3 text-warning" v-show="started"><i class="fas fa-microphone fa-1x"></i> Listening</span>
+        <span class="navbar-text mr-3 text-warning" v-show="started && paused">(Paused)</span>
+        <span class="navbar-text mr-3" v-show="!started">Not Listening</span>
+        <span class="navbar-text mr-3" v-if="y &gt;= 0 && y &lt;= 31 && x &gt;= 0 && x &lt;= 31">Row: {{ y + 1 }} Col: {{ x + 1 }}</span>
+
+        <ul class="navbar-nav ml-auto">
+          <li class="nav-item mr-2">
+            <button v-on:click="reset" class="btn btn-danger">Reset All</button>
+          </li>
+        </ul>
+      </div>
+    </nav>
+
+    <div class="d-flex">
+
+      <table v-if="!showSolution">
+        <tr v-for='row, rowindex in rows' v-bind:class="{'current': rowindex == y}" v-show="rowindex &lt; 32">
+          <td class='text-black bg-dark pr-2'>{{ rowindex + 1 }}</td>
+          <td v-for='cell, cellindex in row' v-bind:style="getStyle(cell)" v-bind:class="{'current': rowindex == y && cellindex == x}"
+            v-on:click="selectCell(rowindex, cellindex)" v-show="cellindex &lt; 32">
+            {{ cell }}
+          </td>
+          <td class='text-black bg-dark pl-2'>{{ rowindex + 1 }}</td>
+        </tr>
+      </table>
+
+      <table v-if="showSolution">
+        <tr v-for='row, rowindex in solrows' v-bind:class="{'current': rowindex == y}" v-show="rowindex &lt; 32">
+          <td class='text-black bg-dark pr-2'>{{ rowindex + 1 }}</td>
+          <td v-for='cell, cellindex in row' v-bind:style="getSolStyle(cell, cellindex, rowindex)" v-bind:class="{'current': rowindex == y && cellindex == x}"
+            v-on:click="toggleSolCell(rowindex, cellindex)" v-show="cellindex &lt; 32">
+            {{ cell }}
+          </td>
+          <td class='text-black bg-dark pl-2'>{{ rowindex + 1 }}</td>
+        </tr>
+      </table>      
+
+      <div class="pl-4 col-4" v-if="showSolution">
+        <h2>Instructions</h2>
+        <p>Now, in the game, go line by line again and click on each refractor the number of times displayed in the blue boxes.</p>
+        <p>You can click on boxes in the solution grid here on the web page to help keep track of where you are in the game.</p>
+      </div>
+
+      <div class="pl-4 col-4" v-if="!showSolution">
+
+        <h2>Voice Commands</h2>
+        <ul>
+          <li>
+            <strong>"New Row", "Next Row", "Start Row"</strong>
+          </li>
+          <li>
+            <strong>"X", "Green", "4 Red", "Plus", "Circle"</strong>
+          </li>
+          <li>
+            <strong>"Reset Row", "Clear"</strong>
+          </li>
+          <li>
+            <strong>"Go to Row 10"</strong>
+          </li>
+          <li>
+            <strong>"Delete", "Delete 4"</strong>
+          </li>
+        </ul>
+        <small><em>Note: Use Chrome web browser! I didn't build this to be cross-browser.</em></small>
+        <h2 class="mt-2">Aliases</h2>
+        <dl>
+          <dt class="symbol">_|_<br>&nbsp;|&nbsp;&nbsp;&nbsp;(Angular Stellar Refractor)</dt>
+          <dd>"Angular" or "Plus"</dd>
+          <dt class="symbol">\/<br>/\&nbsp;&nbsp;&nbsp;(Jagged Stellar Refractor)</dt>
+          <dd>"Jagged", "Ex", or "Cross"</dd>
+          <dt class="symbol">/\<br>\/&nbsp;&nbsp;&nbsp;(Round Stellar Refractor)</dt>
+          <dd>"Round", "Circle", or "Diamond"</dd>
+        </dl>
+
+        <h2>Instructions</h2>
+        <p>
+          Go into the room under the elevator in Halls of Origination while wearing the 
+          <a href="https://www.wowhead.com/item=27944/talisman-of-true-treasure-tracking">Talisman of True Treasure Tracking</a>. 
+          Click on the huge yellow ball in the middle of the platform to generate a random puzzle.
+        </p>
+        <p>
+          Choose one direction to represent the "top" of the puzzle. Most people use North, so move your character to the northern-most
+          row of shapes, and to the left-most shape in the row. This is where you will start.
+        </p>
+        <p>
+          You will walk over the first row from West to East to record each shape or color found of the puzzle. Start the next row on the same side as the
+          last shape from the previous row, so that you zigzag across the room from top to bottom. When you come to the hole in the 
+          middle of the room, continue to walk across to the same row on the other side. 
+          <strong>Be careful not to click the yellow ball while walking through it, or you will need to start over!</strong>
+        </p>
+        <p>
+          Colors and shapes are recorded using a Dictation feature here. Click the green [Start] button at the top to have Chrome begin listening.
+          Say "New Row" or click on the top-left cell in the grid. Then, just say each shape or color that you come across as your character walks the 
+          grid. If you come across multiples of the same shape or color, like 5 reds in a row, then just say "5 red".
+        </p>
+        <p>
+          A confirmation "ding" will play at the end of each row. You should expect to hear this after saying the last shape or color in a row. If the 
+          speech recognition has a problem matching what you say up to known words, then it may play a buzzer sound. In that case, you will need to 
+          stop, see where the puzzle left off, and resume your walking/dictation from there.
+        </p>
+        <p>
+          If it seems like it stopped recognizing your voice, then you can just 
+          click the [Stop] button and then [Start] again. Click on where it left off and resume your walk. Note: This page literally took me a day and a half of
+          coding and "polishing" to get it to this point, and it's good enough for me. <span style='font-family: monospace'>¯\_(ツ)_/¯</span>
+        </p>
+        <p>
+          After recording all 756 shapes and colors, click the blue [Solve] button at the top. If the puzzle was correctly set up, then a solution
+          will be available. You will need to repeat your walk in the game, starting at the "top" again and zigzagging. For each blue box on the solution,
+          click the Stellar Refractor at that location the number of times shown in the solution. At the end, a chest will appear with the Yellow Monocle inside.
+        </p>        
+      </div>
+    </div>
+
+  </div>
+
+  <audio id="errorSound" preload="auto" autoplay="false" src="/sounds/error.mp3" type="audio/mpeg" volume="0.5"></audio>
+  <audio id="dingSound" preload="auto" autoplay="false" src="/sounds/ding.mp3" type="audio/mpeg" volume="0.5"></audio>
+  <audio id="clickSound" preload="auto" autoplay="false" src="/sounds/click.mp3" type="audio/mpeg" volume="0.5"></audio>
+  <audio id="beepSound" preload="auto" autoplay="false" src="/sounds/beep.mp3" type="audio/mpeg" volume="0.05"></audio>
+  <audio id="buzzerSound" preload="auto" autoplay="false" src="/sounds/buzzer.mp3" type="audio/mpeg" volume="0.05"></audio>
+  <audio id="wipeSound" preload="auto" autoplay="false" src="/sounds/wipe.mp3" type="audio/mpeg" volume="0.05"></audio>
+
+  <script src="https://cdn.jsdelivr.net/npm/vue"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lodash@4.17.10/lodash.min.js"></script>
+  <script>
+    (function () {
+
+      if (window.location.href.substr(0, 5) === 'http:' && window.location.href.indexOf('localhost') == -1) {
+        window.location.href = 'https' + window.location.href.substr(4)
+        return
+      }
+
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+      const SpeechGrammarList = window.SpeechGrammarList || window.webkitSpeechGrammarList
+      const SpeechRecognitionEvent = window.SpeechRecognitionEvent || window.webkitSpeechRecognitionEvent
+
+      const recognition = new SpeechRecognition()
+      recognition.interimResults = true
+      recognition.continuous = true
+      recognition.lang = 'en-US'
+      recognition.maxAlternatives = 50
+
+      recognition.onresult = (event) => {
+        for (let i = vm.lastFinal + 1; i < event.results.length; i++) {
+          if (event.results[i].isFinal) {
+            const match = getValidResult(event.results[i])
+
+            if (match != null) {
+              console.info(match)
+              vm.addResult(match)
+            } else {
+              document.getElementById('errorSound').play()
+              console.info('unmatched', event.results[i])
+            }
+
+            vm.lastFinal = i
+          }
+        }
+
+        processResults()
+      }
+
+      recognition.onerror = (event) => {
+        console.error(event.error)
+        if (event.error === 'not-allowed') {
+          vm.stop()
+          alert('You need to let Chrome use your microphone. Look for the "Microphone Blocked" alert to the right of the address bar, and give this page access.')
+        }
+      }
+
+      recognition.onnomatch = (event) => {
+        document.getElementById('errorSound').play()
+        console.info('nomatch', event)
+      }
+
+      const vm = new Vue({
+        el: '#app',
+        data: {
+          puzzle: '',
+          solution: '',
+          rows: [],
+          solrows: [],
+          tracking: [],
+          started: false,
+          results: [],
+          lastFinal: -1,
+          y: -1,
+          x: 0,
+          dx: 1,
+          paused: false,
+          showSolution: false
+        },
+        methods: {
+          start: () => {
+            recognition.start()
+            vm.started = true
+          },
+          stop: () => {
+            recognition.stop()
+            vm.started = false
+            vm.lastFinal = -1
+            vm.y = -1
+            vm.x = 0
+            vm.dx = 1
+          },
+          addResult: (r) => {
+            vm.results = _.concat(vm.results, parseCommands(r))
+          },
+          init: () => {
+            vm.puzzle = loadPuzzleFromLocalStorage() || emptyPuzzle
+            vm.solution = ""
+            vm.rows = parsePuzzle(vm.puzzle)
+            vm.solrows = []
+            vm.tracking = initializeEmptyGrid(false)
+            vm.y = -1
+            vm.x = 0
+            vm.dm = 1
+            vm.showSolution = false;
+          },
+          reset: () => {
+            localStorage.clear()
+            vm.init()
+          },
+          selectCell: (r, c) => {
+            if (vm.started) {
+              vm.results.push({ cmd: 'goto', row: r, col: c })
+              processResults();
+            }
+          },
+          toggleSolCell: (r, c) => {
+            if (vm.tracking != null && vm.tracking.length > 0) {
+              vm.tracking[r][c] = !vm.tracking[r][c]
+              vm.$forceUpdate()
+            }
+          },
+          getStyle: (c) => {
+            let ret = { background: 'black', color: 'black' }
+            if (c === '?') { ret.background = '#888'; ret.color = '#999'; }
+            if (c !== '?' && c !== '-') { ret.background = 'blue'; ret.color = 'white'; }
+            if (c === 'Y') { ret.background = 'yellow'; ret.color = 'black'; }
+            if (c === 'R') { ret.background = 'red'; ret.color = 'white'; }
+            if (c === 'G') { ret.background = 'green'; ret.color = 'white'; }
+            if (c === 'W') { ret.background = 'white'; ret.color = 'black'; }
+
+            return ret;
+          },
+          getSolStyle: (c, x, y) => {
+            let ret = { background: 'black', color: 'black' }
+            if (c !== '?' && c !== '-') { ret.background = 'blue'; ret.color = 'white'; }
+            if (c === 'Y') { ret.background = 'rgba(255,255,0,0.2)'; ret.color = 'lightgray'; }
+            if (c === 'R') { ret.background = 'rgba(255,0,0,0.2)'; ret.color = 'lightgray'; }
+            if (c === 'G') { ret.background = 'rgba(0,255,0,0.2)'; ret.color = 'lightgray'; }
+            if (c === 'W') { ret.background = 'rgba(255,255,255)'; ret.color = 'lightgray'; }
+
+            if (vm.isTracked(x,y)) {
+              ret.border = '2px solid red'
+              ret.background = "#222"
+              ret.color = "#666"
+            }
+            return ret;
+          },          
+          showPuzzle: () => {
+            vm.showSolution = false
+          },
+          calc: () => {
+            vm.stop()
+            Calc(vm.rows).then(solution => {
+              console.log("Solution:")
+              console.log(solution)
+
+              vm.solution = solution
+              saveSolutionToLocalStorage(solution)
+
+              vm.solrows = parsePuzzle(solution)
+              if (vm.tracking.length === 0) {
+                vm.tracking = initializeEmptyGrid(false)
+                console.log(vm.tracking)
+              }
+              vm.showSolution = true
+            })
+          },
+          isTracked: (x,y) => {
+            if (vm.tracking == null || vm.tracking.length === 0) {
+              return false;
+            }
+            if (x < 0 || x > 31 || y < 0 || y > 31) {
+              return false
+            }
+            return vm.tracking[y][x]
+          }
+        }
+      })
+
+      function processResults() {
+        while (vm.results.length) {
+          let r = vm.results.shift()
+
+          switch (r.cmd) {
+            case 'rowstart':
+              if (!vm.paused) {
+                vm.y++
+                if (vm.y % 2 === 0) {
+                  vm.dx = 1
+                  for (let i = 0; i < 10; i++) {
+                    if (vm.rows[vm.y][i] === '?') {
+                      vm.x = i
+                      break
+                    }
+                  }
+                } else {
+                  vm.dx = -1
+                  for (let i = 31; i >= 20; i--) {
+                    if (vm.rows[vm.y][i] === '?') {
+                      vm.x = i
+                      break
+                    }
+                  }
+                }
+                document.getElementById('clickSound').play()
+              }
+              break
+            case 'rowstop':
+              break
+            case 'clear':
+              if (!vm.paused) {
+                for (let i = 0; i < 32; i++) {
+                  if (vm.rows[vm.y][i] !== '-') {
+                    vm.rows[vm.y][i] = '?'
+                  }
+                }
+                if (vm.y % 2 === 0) {
+                  for (let i = 0; i < 10; i++) {
+                    if (vm.rows[vm.y][i] !== '-') {
+                      vm.x = i
+                      break
+                    }
+                  }
+                } else {
+                  for (let i = 31; i >= 20; i--) {
+                    if (vm.rows[vm.y][i] !== '-') {
+                      vm.x = i
+                      break
+                    }
+                  }
+                }
+                vm.$forceUpdate()
+                document.getElementById('wipeSound').play()
+              }
+              break;
+            case 'delete':
+              if (!vm.paused) {
+                for (let i = 0; i < r.qty; i++) {
+                  vm.x += -1 * vm.dx
+
+                  if (vm.x < 0) {
+                    vm.x = 0
+                  } else if (vm.x > 31) {
+                    vm.x = 31
+                  }
+
+                  if (vm.rows[vm.y][vm.x] !== '-') {
+                    vm.rows[vm.y][vm.x] = '?'
+                  }
+                }
+                vm.$forceUpdate()
+                document.getElementById('buzzerSound').play()
+              }
+              break
+            case 'goto':
+              if (!vm.paused) {
+                vm.y = r.row
+                if (r.col != null) vm.x = r.col
+
+                if (vm.y % 2 === 0) {
+                  vm.dx = 1
+
+                  if (r.col == null) {
+                    for (let i = 0; i < 10; i++) {
+                      if (vm.rows[vm.y][i] !== '-') {
+                        vm.x = i
+
+                        if (vm.rows[vm.y][i] === '?') {
+                          break
+                        }
+                      }
+                    }
+                  }
+                } else {
+                  vm.dx = -1
+
+                  if (r.col == null) {
+                    for (let i = 31; i >= 20; i--) {
+                      if (vm.rows[vm.y][i] !== '-') {
+                        vm.x = i
+
+                        if (vm.rows[vm.y][i] === '?') {
+                          break
+                        }
+                      }
+                    }
+                  }
+                }
+                document.getElementById('clickSound').play()
+              }
+              break
+            case 'pause':
+              vm.paused = true
+              break
+            case 'resume':
+              vm.paused = false
+              break
+            default:
+              if (!vm.paused && vm.y >= 0) {
+                for (let i = 0; i < r.qty; i++) {
+                  if (vm.rows[vm.y][vm.x] !== '-') {
+                    vm.rows[vm.y][vm.x] = r.cmd
+
+                    vm.x += vm.dx
+
+                    if (vm.x < 0) {
+                      vm.x = -1
+                      savePuzzleToLocalStorage(arrayToPuzzle(vm.rows))
+                      document.getElementById('dingSound').play()
+                      vm.results = [{ cmd: 'rowstart' }]
+                    } else if (vm.x > 31) {
+                      vm.x = 32
+                      savePuzzleToLocalStorage(arrayToPuzzle(vm.rows))
+                      document.getElementById('dingSound').play()
+                      vm.results = [{ cmd: 'rowstart' }]
+                    }
+                  }
+                }
+
+                if (vm.rows[vm.y][vm.x] === '-' && (vm.x < 10 || vm.x > 21)) {
+                  savePuzzleToLocalStorage(arrayToPuzzle(vm.rows))
+                  document.getElementById('dingSound').play()
+                  vm.results = [{ cmd: 'rowstart' }]
+                }
+
+                if (vm.rows[vm.y][vm.x] === '-' && vm.x >= 10 && vm.x <= 21) {
+                  savePuzzleToLocalStorage(arrayToPuzzle(vm.rows))
+                  document.getElementById('beepSound').play()
+
+                  while (vm.rows[vm.y][vm.x] === '-') {
+                    vm.x += vm.dx
+                  }
+                }
+              }
+              break
+          }
+        }
+      }
+
+      const validWords = [
+        'new',
+        'next',
+        'start',
+        'go',
+        'goto',
+        'row',
+        'clear',
+        'reset',
+        'delete',
+        'end',
+        'stop',
+        'pause',
+        'resume'
+      ]
+
+      const validObjects = [
+        'white',
+        'whites',
+        'yellow',
+        'yellows',
+        'red',
+        'reds',
+        'green',
+        'greens',
+        '+',
+        'plus',
+        'plusses',
+        'angular',
+        'x',
+        'cross',
+        'crosses',
+        'jagged',
+        'o',
+        'ohs',
+        'round',
+        'diamond',
+        'diamonds',
+        'circle',
+        'circles'
+      ]
+
+      const validNumbers = [
+        '1',
+        '2',
+        'to',
+        'too',
+        'two',
+        '3',
+        '4',
+        '5',
+        '6',
+        '7',
+        '8',
+        '9',
+        '10',
+        '11',
+        '12',
+        '13',
+        '14',
+        '15',
+        '16',
+        '17',
+        '18',
+        '19',
+        '20',
+        '21',
+        '22',
+        '23',
+        '24',
+        '25',
+        '26',
+        '27',
+        '28',
+        '29',
+        '30',
+        '31',
+        '32'
+      ]
+
+      function getValidResult(alternatives) {
+        for (let i = 0; i < alternatives.length; i++) {
+          let words = alternatives[i].transcript.toLowerCase().split(' ').filter(w => w.length > 0)
+
+          if (words.every(w => validWords.includes(w) || validNumbers.includes(w) || validObjects.includes(w))) {
+            console.log(words)
+            return words
+          }
+        }
+      }
+
+      function parseCommands(words) {
+        let ret = []
+
+        for (let i = 0; i < words.length; i++) {
+
+          // new row
+          // next row
+          // start row
+          if ((words[i] === 'new' || words[i] === 'next' || words[i] === 'start') && words[i + 1] === 'row') {
+            ret.push({ cmd: 'rowstart' })
+            i++;
+            continue;
+          }
+
+          // end row
+          // stop row
+          if ((words[i] === 'end' || words[i] === 'stop') && words[i + 1] === 'row') {
+            ret.push({ cmd: 'rowstop' })
+            i++;
+            continue;
+          }
+
+          // row start
+          if (words[i] === 'row' && words[i + 1] === 'start') {
+            ret.push({ cmd: 'rowstart' })
+            i++;
+            continue;
+          }
+
+          // reset row
+          if (words[i] == 'reset' && words[i + 1] === 'row') {
+            ret.push({ cmd: 'clear' })
+            i++;
+            continue;
+          }
+
+          // clear
+          if (words[i] === 'clear') {
+            ret.push({ cmd: 'clear' })
+            continue;
+          }
+
+          // goto row {1..32}
+          if (words[i] === 'goto' && words[i + 1] === 'row' && validNumbers.includes(words[i + 2])) {
+            ret.push({ cmd: 'goto', row: normalizeNumber(words[i + 2]) - 1 })
+            i++
+            i++
+            continue;
+          }
+
+          // go to row {1..32}
+          if (words[i] === 'go' && words[i + 1] === 'to' && words[i + 2] === 'row' && validNumbers.includes(words[i + 3])) {
+            ret.push({ cmd: 'goto', row: normalizeNumber(words[i + 3]) - 1 })
+            i++
+            i++
+            i++
+            continue;
+          }
+
+          // delete {1..32}
+          if (words[i] === 'delete' && validNumbers.includes(words[i + 1])) {
+            ret.push({ cmd: 'delete', qty: normalizeNumber(words[i + 1]) })
+            i++
+            continue;
+          }
+
+          // delete
+          if (words[i] === 'delete') {
+            ret.push({ cmd: 'delete', qty: 1 })
+            continue;
+          }
+
+          // stop
+          // pause
+          if (words[i] === 'stop' || words[i] === 'pause') {
+            ret.push({ cmd: 'pause' })
+            continue;
+          }
+
+          // resume
+          if (words[i] === 'resume') {
+            ret.push({ cmd: 'resume' })
+            continue;
+          }
+
+          // {1..32} {object}
+          if (validNumbers.includes(words[i]) && validObjects.includes(words[i + 1])) {
+            let obj = normalize(words[i + 1])
+
+            ret.push({ cmd: obj, qty: normalizeNumber(words[i]) })
+            i++
+            continue;
+          }
+
+          // {object}
+          if (validObjects.includes(words[i])) {
+            ret.push({ cmd: normalize(words[i]), qty: 1 })
+            continue;
+          }
+        }
+
+        return ret
+      }
+
+      function normalize(obj) {
+        if (obj === 'circle' || obj === 'diamond' || obj === 'round' || obj === 'diamonds' || obj === 'circles') {
+          obj = 'o'
+        } else if (obj === 'plus' || obj === 'plusses' || obj === 'angular') {
+          obj = '+'
+        } else if (obj === 'cross' || obj === 'crosses' || obj === 'jagged') {
+          obj = 'x'
+        } else if (obj === 'yellow' || obj === 'yellows') {
+          obj = 'Y'
+        } else if (obj === 'red' || obj === 'reds') {
+          obj = 'R'
+        } else if (obj === 'white' || obj === 'whites') {
+          obj = 'W'
+        } else if (obj === 'green' || obj === 'greens') {
+          obj = 'G'
+        }
+
+        return obj
+      }
+
+      function normalizeNumber(num) {
+        if (num === 'to' || num === 'too' || num === 'two') {
+          num = '2'
+        }
+
+        return parseInt(num, 10)
+      }
+
+      const emptyPuzzle = `---------??????????????---------
+--------????????????????--------
+-------??????????????????-------
+------????????????????????------
+-----??????????????????????-----
+----????????????????????????----
+---??????????????????????????---
+--????????????????????????????--
+-??????????????????????????????-
+????????????????????????????????
+????????????????????????????????
+?????????????------?????????????
+????????????--------????????????
+???????????----------???????????
+???????????----------???????????
+???????????----------???????????
+???????????----------???????????
+???????????----------???????????
+???????????----------???????????
+????????????--------????????????
+?????????????------?????????????
+????????????????????????????????
+????????????????????????????????
+-??????????????????????????????-
+--????????????????????????????--
+---??????????????????????????---
+----????????????????????????----
+-----??????????????????????-----
+------????????????????????------
+-------??????????????????-------
+--------????????????????--------
+---------??????????????---------`
+
+      function parsePuzzle(puzzle) {
+        return puzzle.split('\n').map(r => r.split(''))
+      }
+
+      function arrayToPuzzle(rows) {
+        return rows.map(r => r.join('')).join('\n')
+      }
+
+      function savePuzzleToLocalStorage(puzzle) {
+        localStorage.setItem('puzzle', puzzle)
+      }
+
+      function loadPuzzleFromLocalStorage() {
+        return localStorage.getItem('puzzle')
+      }
+
+      function loadSolutionFromLocalStorage() {
+        return localStorage.getItem('solution')
+      }
+
+      function saveSolutionToLocalStorage(solution) {
+        localStorage.setItem('solution', solution)
+      }
+
+      function initializeEmptyGrid(val) {
+        let ret = []
+
+        for (let i=0; i < 32; i++) {
+          ret[i] = []
+          for (let j=0; j < 32; j++) {
+            ret[i][j] = val
+          }
+        }
+
+        return ret
+      }
+
+      // Begin solver code
+
+      // Credit: HHPH Addon (ykiigor) https://www.curseforge.com/wow/addons/hivemind-hoo-puzzle-helper
+      // Ported from Lua to JavaScript by jfollas
+
+      // L is 32x32 array
+      async function Calc(L) {
+        let N = []  // Number of interactions
+        let R = []  // How many interactions are needed to get to the isolated color
+        let M = []  // [s, y, x] list of refractors that interacts with a color cell
+        let B = []  // Count of how many times a refractor has been used (i.e., solution to puzzle)
+        let Mr = [] // [y,x] coordinates of cells that a refractor interacts with (i.e., a list of other cells)
+
+        for (let i = 0; i < 32; i++) {
+          N[i] = []
+          R[i] = []
+          M[i] = []
+          Mr[i] = []
+          B[i] = []
+
+          for (let j = 0; j < 32; j++) {
+            N[i][j] = 0
+            R[i][j] = 0
+            M[i][j] = []
+            Mr[i][j] = []
+            B[i][j] = 0
+          }
+        }
+
+        for (let i = 0; i < 32; i++) {
+          for (let j = 0; j < 32; j++) {
+
+            let s = L[i][j]
+
+            if (s == "+") {
+              for (let xL = j - 1; xL >= 0; xL--) {
+                let c = L[i][xL]
+
+                if (c == "G" || c == "W" || c == "Y" || c == "R") {
+                  N[i][xL] = N[i][xL] + 1
+                  M[i][xL].push([s, i, j])
+                  Mr[i][j].push([i, xL])
+                } else {
+                  break
+                }
+              }
+
+              for (let xR = j + 1; xR < 32; xR++) {
+                let c = L[i][xR]
+                if (c == "G" || c == "W" || c == "Y" || c == "R") {
+                  N[i][xR] = N[i][xR] + 1
+                  M[i][xR].push([s, i, j])
+                  Mr[i][j].push([i, xR])
+                } else {
+                  break
+                }
+              }
+
+              for (let yT = i - 1; yT >= 0; yT--) {
+                let c = L[yT][j]
+                if (c == "G" || c == "W" || c == "Y" || c == "R") {
+                  N[yT][j] = N[yT][j] + 1
+                  M[yT][j].push([s, i, j])
+                  Mr[i][j].push([yT, j])
+                } else {
+                  break
+                }
+              }
+
+              for (let yB = i + 1; yB < 32; yB++) {
+                let c = L[yB][j]
+                if (c == "G" || c == "W" || c == "Y" || c == "R") {
+                  N[yB][j] = N[yB][j] + 1
+                  M[yB][j].push([s, i, j])
+                  Mr[i][j].push([yB, j])
+                } else {
+                  break
+                }
+              }
+            }
+            else if (s == "o") {
+              for (let x = j - 1; x <= j + 1; x++) {
+                for (let y = i - 1; y <= i + 1; y++) {
+                  if (y >= 0 && y < 32 && x < 32 && x >= 0) {
+                    let c = L[y][x]
+                    if (c == "G" || c == "W" || c == "Y" || c == "R") {
+                      N[y][x] = N[y][x] + 1
+                      M[y][x].push([s, i, j])
+                      Mr[i][j].push([y, x])
+                    }
+                  }
+                }
+              }
+            }
+            else if (s == "x") {
+              let dX, dY, x, y
+
+              for (let k = 1; k <= 4; k++) {
+                if (k == 1) [dX, dY] = [-1, -1]
+                if (k == 2) [dX, dY] = [1, -1]
+                if (k == 3) [dX, dY] = [-1, 1]
+                if (k == 4) [dX, dY] = [1, 1]
+
+                x = j
+                y = i
+
+                while (true) {
+                  x = x + dX
+                  y = y + dY
+
+                  if (y >= 0 && y < 32 && x < 32 && x >= 0) {
+                    let c = L[y][x]
+
+                    if (c == "G" || c == "W" || c == "Y" || c == "R") {
+                      N[y][x] = N[y][x] + 1
+                      M[y][x].push([s, i, j])
+                      Mr[i][j].push([y, x])
+                    } else {
+                      break
+                    }
+                  } else {
+                    break
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        //G > W > Y > R > G
+        //1 > 2 > 3 > 4 > 1
+
+        let [cG, cW, cY, cR] = [1, 2, 3, 4]
+
+        let isolatedColor
+
+        for (i = 31; i >= 0; i--) {
+          for (j = 0; j < 32; j++) {
+            let s = N[i][j]
+            let c = L[i][j]
+
+            if (c == "G" || c == "W" || c == "Y" || c == "R") {
+              if (s == 0) {
+
+                // This cell does not interact with any of the refractors, so this is the color we need
+
+                // The isolated color can become a checksum, of sorts, since it should be the same color
+                // for all cells that do not interact with refractors
+
+                if (isolatedColor != null && isolatedColor !== c) {
+                  const ret = { error: 'More than one isolated color was found. Check the input against the game.' }
+                  console.warn(ret)
+                  return ret
+                }
+
+                // For each color in the puzzle, determine how many interactions are required to rotate the cell
+                // to the isolated color
+
+                if (c == "G") [cG, cW, cY, cR] = [4, 1, 2, 3]
+                if (c == "W") [cG, cW, cY, cR] = [3, 4, 1, 2]
+                if (c == "Y") [cG, cW, cY, cR] = [2, 3, 4, 1]
+                if (c == "R") [cG, cW, cY, cR] = [1, 2, 3, 4]
+
+                isolatedColor = c
+              }
+            }
+          }
+        }
+
+        for (let i = 31; i >= 0; i--) {
+          for (let j = 0; j < 32; j++) {
+            let c = L[i][j]
+
+            // For each color found, store how many rotations it will require to get to the isolated color
+            if (c == "G" || c == "W" || c == "Y" || c == "R") {
+              if (c == "G") R[i][j] = cG
+              if (c == "W") R[i][j] = cW
+              if (c == "Y") R[i][j] = cY
+              if (c == "R") R[i][j] = cR
+
+              B[i][j] = -1
+            } else if (c == "x" || c == "o" || c == "+") {
+              // no-op
+            } else {
+              B[i][j] = -2
+            }
+          }
+        }
+
+        async function Click(s, X, Y) {
+          // Perform a refractor interaction, and adjust the number of additional interactions
+          // required for all of the affected cells
+          
+          if (s == "+" || s == "x") {
+            let dX, dY, x, y
+
+            for (let k = 1; k <= 4; k++) {
+              if (s == "+" && k == 1) [dX, dY] = [-1, 0]
+              if (s == "+" && k == 2) [dX, dY] = [1, 0]
+              if (s == "+" && k == 3) [dX, dY] = [0, 1]
+              if (s == "+" && k == 4) [dX, dY] = [0, -1]
+              if (s == "x" && k == 1) [dX, dY] = [-1, -1]
+              if (s == "x" && k == 2) [dX, dY] = [1, -1]
+              if (s == "x" && k == 3) [dX, dY] = [-1, 1]
+              if (s == "x" && k == 4) [dX, dY] = [1, 1]
+
+              x = X
+              y = Y
+
+              while (true) {
+                x = x + dX
+                y = y + dY
+
+                if (y >= 0 && y < 32 && x < 32 && x >= 0) {
+                  if (R[y][x] > 0) {
+                    R[y][x] = R[y][x] + 1
+
+                    if (R[y][x] > 4) {
+                      R[y][x] = 1
+                    }
+                  } else {
+                    break
+                  }
+                } else {
+                  break
+                }
+              }
+            }
+          } else if (s == "o") {
+            for (x = X - 1; x <= X + 1; x++) {
+              for (y = Y - 1; y <= Y + 1; y++) {
+                if (y >= 0 && y < 32 && x < 32 && x >= 0) {
+                  if (R[y][x] > 0) {
+                    R[y][x] = R[y][x] + 1
+                    if (R[y][x] > 4) {
+                      R[y][x] = 1
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        // N = []  // Number of interactions
+        // R = []  // How many interactions are needed to get to the isolated color
+        // M = []  // [s, y, x] list of refractors that interacts with a color cell
+        // B = []  // Count of how many times a refractor has been used (i.e., solution to puzzle)
+        // Mr = [] // [y,x] coordinates of cells that a refractor interacts with (i.e., a list of other cells)
+
+        async function Proc1() {
+          let count = 0
+
+          for (let i = 0; i < 32; i++) {
+            for (let j = 0; j < 32; j++) {
+              if (N[i][j] == 1) {
+                // Here's a cell that only interacts with one refractor
+                
+                let [s, Y, X] = M[i][j][0] // Refractor that interacts with the current cell
+
+                // Rotate the cell color to the isolated color by "clicking" on the refractor a number of times
+                for (let l = R[i][j] + 1; l <= 4; l++) {
+                  B[Y][X] = B[Y][X] + 1
+                  await Click(s, X, Y)
+                }
+
+                // This refractor is done, so reduce the number of interactions remaining for the
+                // cells that the refractor impacted. Remove this refractor from the interactions 
+                // lists of those cells
+                for (let l = 0; l < Mr[Y][X].length; l++) {
+                  let [y, x] = Mr[Y][X][l]
+                  N[y][x] = N[y][x] - 1
+
+                  for (let k = 0; k < M[y][x].length; k++) {
+                    if (M[y][x][k][1] == Y && M[y][x][k][2] == X) {
+                      M[y][x].splice(k, 1)
+                      break
+                    }
+                  }
+
+                  count++
+                }
+              }
+            }
+          }
+
+          return count
+        }
+
+        let [p, iterations] = [1, 0]
+
+        while (p > 0) { // keep going until there were no more refractors to interact with
+          if (iterations++ > 100) return { error: 'Way too many iterations. Check the puzzle against the game.' }
+          p = await Proc1()
+        }
+
+        console.info(`Solution found in ${iterations} iterations`)
+
+        // Convert the array structure back to a string version of the puzzle
+        let ret = ""
+
+        for (let i = 0; i < 32; i++) {
+          for (let j = 0; j < 32; j++) {
+            let c = L[i][j]
+
+            if (c == "G" || c == "W" || c == "Y" || c == "R") {
+              if (R[i][j] == cG) ret += "G"
+              if (R[i][j] == cW) ret += "W"
+              if (R[i][j] == cY) ret += "Y"
+              if (R[i][j] == cR) ret += "R"
+            } 
+            else if (c == "x" || c == "o" || c == "+") {
+              ret += B[i][j]
+            } 
+            else {
+              ret += "-"
+            }
+          }
+          ret += "\n"
+        }
+
+        return ret
+      }
+
+      // End solver
+
+
+
+      // Boostrapping (page startup)
+      vm.init()
+    })()
+
+  </script>
+</body>
+
+</html>
